@@ -2,9 +2,6 @@ package redisx
 
 import (
 	"math/rand"
-	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/FZambia/sentinel"
@@ -14,7 +11,6 @@ import (
 func initSentinel(conf *SentinelConf) {
 
 	sentinel := getSentinel(conf)
-	go closeSentinelIfDown(sentinel)
 	master := &Cacher{
 		Prefix: conf.Prefix,
 	}
@@ -40,13 +36,6 @@ func getSentinel(opts *SentinelConf) *sentinel.Sentinel {
 		MasterName: opts.MasterName,
 		Pool:       pool(opts.ProxyConf),
 	}
-}
-
-func closeSentinelIfDown(sentinel *sentinel.Sentinel) {
-	quit := make(chan os.Signal)
-	signal.Notify(quit, syscall.SIGKILL, syscall.SIGQUIT, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-	sentinel.Close()
 }
 
 func getSentinelMasterPool(sntnl *sentinel.Sentinel, opts *ProxyConf) *redis.Pool {
