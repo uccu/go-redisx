@@ -7,16 +7,9 @@ import (
 	"github.com/gomodule/redigo/redis"
 )
 
-func initNormal(confs map[string]*ProxyConf) {
-	for confName, conf := range confs {
-		setDefaultOpts(conf)
-		c := &Cacher{
-			Prefix: conf.Prefix,
-		}
-		c.pool = getNormalPool(conf)
-		go c.closeIfDown()
-		RedisClusterMap[confName] = c
-	}
+func initNormal(conf *ProxyConf) *redis.Pool {
+	setDefaultOpts(conf)
+	return getNormalPool(conf)
 }
 
 func getNormalPool(opts *ProxyConf) *redis.Pool {

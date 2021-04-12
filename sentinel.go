@@ -8,32 +8,31 @@ import (
 	"github.com/gomodule/redigo/redis"
 )
 
-func initSentinel(conf *SentinelConf) {
+type SentinelConf struct {
+	Master   *ProxyConf
+	Slave    *ProxyConf
+	UseSlave bool
+	*ProxyConf
+}
 
+func initSentinel(conf *SentinelConf) (*redis.Pool, *redis.Pool) {
 	sentinel := getSentinel(conf)
-	master := &Cacher{
-		Prefix: conf.Prefix,
-	}
-	master.pool = getSentinelMasterPool(sentinel, conf.Master)
-	RedisClusterMap["default"] = master
-	go master.closeIfDown()
+	master := getSentinelMasterPool(sentinel, conf.Master)
 
-	slave := &Cacher{
-		Prefix: conf.Prefix,
+	if conf.UseSlave {
+		return master, getSentinelSlavePool(sentinel, conf.Slave)
 	}
-	slave.pool = getSentinelSlavePool(sentinel, conf.Slave)
-	RedisClusterMap["read"] = slave
-	go slave.closeIfDown()
+	return master, nil
 }
 
 func getSentinel(opts *SentinelConf) *sentinel.Sentinel {
 	setDefaultOpts(opts.ProxyConf)
-	if opts.MasterName == "" {
-		opts.MasterName = "mymaster"
+	if opts.Name == "" {
+		opts.Name = "mymaster"
 	}
 	return &sentinel.Sentinel{
 		Addrs:      opts.AddrList,
-		MasterName: opts.MasterName,
+		MasterName: opts.Name,
 		Pool:       pool(opts.ProxyConf),
 	}
 }

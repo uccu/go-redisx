@@ -11,20 +11,13 @@ import (
 	"github.com/gomodule/redigo/redis"
 )
 
-type Cacher struct {
-	pool   *redis.Pool
-	Prefix string
-}
-
-func (c *Cacher) closeIfDown() {
-	quit := make(chan os.Signal)
-	signal.Notify(quit, syscall.SIGKILL, syscall.SIGQUIT, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-	fmt.Println("close")
-	c.pool.Close()
+type Pool interface {
+	Get() redis.Conn
+	Close() error
 }
 
 type ProxyConf struct {
+	Name           string
 	AddrList       []string
 	MaxActive      int
 	MaxIdle        int
@@ -32,7 +25,6 @@ type ProxyConf struct {
 	Network        string
 	Password       string
 	Db             int
-	Prefix         string
 	IdleTimeout    time.Duration
 	ConnectTimeout time.Duration
 	ReadTimeout    time.Duration
@@ -40,28 +32,65 @@ type ProxyConf struct {
 	Wait           bool
 }
 
-type SentinelConf struct {
-	MasterName string
-	Master     *ProxyConf
-	Slave      *ProxyConf
-	*ProxyConf
-}
-
 type Conf struct {
-	Mode         string                // 模式，支持 default/sentinel
-	ProxyConf    map[string]*ProxyConf // 地址配置
-	SentinelConf *SentinelConf         // 哨兵配置
+	Mode         string        // 模式，支持 single/sentinel
+	SingleConf   *ProxyConf    // 地址配置
+	SentinelConf *SentinelConf // 哨兵配置
+	ClusterConf  *ClusterConf  // 集群配置
 }
 
-var RedisClusterMap = make(map[string]*Cacher)
+type Pools struct {
+	pools map[string]Pool
+}
 
-func InitRedis(conf Conf) (err error) {
-	if conf.Mode == "sentinel" {
-		initSentinel(conf.SentinelConf)
-	} else {
-		initNormal(conf.ProxyConf)
+func (v *Pools) GetPool(l ...string) redis.Conn {
+	name := "default"
+	if len(l) > 0 {
+		name = l[0]
 	}
-	return nil
+	pool, ok := v.pools[name]
+	if !ok {
+		pool = v.pools["default"]
+	}
+	return pool.Get()
+}
+
+func (v *Pools) closeIfDown() {
+	quit := make(chan os.Signal)
+	signal.Notify(quit, syscall.SIGKILL, syscall.SIGQUIT, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	fmt.Println("redis close")
+	for _, v := range v.pools {
+		v.Close()
+	}
+}
+
+func InitRedis(conf Conf) Pools {
+	p := Pools{
+		pools: map[string]Pool{},
+	}
+	go p.closeIfDown()
+
+	if conf.Mode == "sentinel" {
+		if conf.SentinelConf.Master.Name == "" {
+			conf.SentinelConf.Master.Name = "master"
+		}
+		if conf.SentinelConf.Slave.Name == "" {
+			conf.SentinelConf.Slave.Name = "slave"
+		}
+		p.pools[conf.SentinelConf.Master.Name], p.pools[conf.SentinelConf.Slave.Name] = initSentinel(conf.SentinelConf)
+	} else if conf.Mode == "cluster" {
+		if conf.ClusterConf.Name == "" {
+			conf.ClusterConf.Name = "default"
+		}
+		p.pools[conf.ClusterConf.Name] = initCluster(conf.ClusterConf)
+	} else {
+		if conf.SingleConf.Name == "" {
+			conf.SingleConf.Name = "default"
+		}
+		p.pools[conf.SingleConf.Name] = initNormal(conf.SingleConf)
+	}
+	return p
 }
 
 func setDefaultOpts(opts *ProxyConf) {
@@ -95,27 +124,6 @@ func setDefaultOpts(opts *ProxyConf) {
 	}
 }
 
-func CloseRedis() error {
-	for _, v := range RedisClusterMap {
-		v.pool.Close()
-	}
-	return nil
-}
-
-func GetPool(clusterList ...string) redis.Conn {
-
-	clusterName := "default"
-	if len(clusterList) > 0 {
-		clusterName = clusterList[0]
-	}
-
-	cacher, ok := RedisClusterMap[clusterName]
-	if !ok {
-		cacher = RedisClusterMap["default"]
-	}
-	return cacher.pool.Get()
-}
-
 var NoAddr = errors.New("redisx:no addr")
 
 func pool(opts *ProxyConf) func(addr string) *redis.Pool {
@@ -138,7 +146,13 @@ func poolWithDial(opts *ProxyConf, dial func() (redis.Conn, error)) *redis.Pool 
 func dial(addr string, opts *ProxyConf) func() (redis.Conn, error) {
 	return func() (redis.Conn, error) {
 
-		conn, err := redis.DialTimeout(opts.Network, addr, opts.ConnectTimeout, opts.ReadTimeout, opts.WriteTimeout)
+		redis.Dial(opts.Network, addr,
+			redis.DialConnectTimeout(opts.ConnectTimeout),
+			redis.DialReadTimeout(opts.ReadTimeout),
+			redis.DialWriteTimeout(opts.WriteTimeout),
+		)
+
+		conn, err := redis.Dial(opts.Network, addr)
 		if err != nil {
 			return nil, err
 		}
