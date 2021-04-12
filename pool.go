@@ -33,7 +33,7 @@ type ProxyConf struct {
 }
 
 type Conf struct {
-	Mode         string        // 模式，支持 single/sentinel
+	Mode         string        // 模式，支持 single/sentinel/cluster
 	SingleConf   *ProxyConf    // 地址配置
 	SentinelConf *SentinelConf // 哨兵配置
 	ClusterConf  *ClusterConf  // 集群配置
@@ -43,6 +43,8 @@ type Pools struct {
 	pools map[string]Pool
 }
 
+var NoDefaultPool = errors.New("redisx:no default pool")
+
 func (v *Pools) GetPool(l ...string) redis.Conn {
 	name := "default"
 	if len(l) > 0 {
@@ -50,7 +52,10 @@ func (v *Pools) GetPool(l ...string) redis.Conn {
 	}
 	pool, ok := v.pools[name]
 	if !ok {
-		pool = v.pools["default"]
+		pool, ok = v.pools["default"]
+		if !ok {
+			panic(NoDefaultPool)
+		}
 	}
 	return pool.Get()
 }
@@ -65,30 +70,34 @@ func (v *Pools) closeIfDown() {
 	}
 }
 
-func InitRedis(conf Conf) Pools {
+func InitRedis(confs []*Conf) Pools {
 	p := Pools{
 		pools: map[string]Pool{},
 	}
 	go p.closeIfDown()
 
-	if conf.Mode == "sentinel" {
-		if conf.SentinelConf.Master.Name == "" {
-			conf.SentinelConf.Master.Name = "master"
+	for _, conf := range confs {
+
+		if conf.Mode == "sentinel" {
+			if conf.SentinelConf.Master.Name == "" {
+				conf.SentinelConf.Master.Name = "master"
+			}
+			if conf.SentinelConf.Slave.Name == "" {
+				conf.SentinelConf.Slave.Name = "slave"
+			}
+			p.pools[conf.SentinelConf.Master.Name], p.pools[conf.SentinelConf.Slave.Name] = initSentinel(conf.SentinelConf)
+		} else if conf.Mode == "cluster" {
+			if conf.ClusterConf.Name == "" {
+				conf.ClusterConf.Name = "default"
+			}
+			p.pools[conf.ClusterConf.Name] = initCluster(conf.ClusterConf)
+		} else {
+			if conf.SingleConf.Name == "" {
+				conf.SingleConf.Name = "default"
+			}
+			p.pools[conf.SingleConf.Name] = initNormal(conf.SingleConf)
 		}
-		if conf.SentinelConf.Slave.Name == "" {
-			conf.SentinelConf.Slave.Name = "slave"
-		}
-		p.pools[conf.SentinelConf.Master.Name], p.pools[conf.SentinelConf.Slave.Name] = initSentinel(conf.SentinelConf)
-	} else if conf.Mode == "cluster" {
-		if conf.ClusterConf.Name == "" {
-			conf.ClusterConf.Name = "default"
-		}
-		p.pools[conf.ClusterConf.Name] = initCluster(conf.ClusterConf)
-	} else {
-		if conf.SingleConf.Name == "" {
-			conf.SingleConf.Name = "default"
-		}
-		p.pools[conf.SingleConf.Name] = initNormal(conf.SingleConf)
+
 	}
 	return p
 }
