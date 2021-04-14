@@ -13,7 +13,6 @@ func initNormal(conf *ProxyConf) *redis.Pool {
 }
 
 func getNormalPool(opts *ProxyConf) *redis.Pool {
-	setDefaultOpts(opts)
 	return poolWithDial(opts, func() (redis.Conn, error) {
 		addrs := opts.AddrList
 		var addr string

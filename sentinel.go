@@ -12,7 +12,7 @@ type SentinelConf struct {
 	Master   *ProxyConf
 	Slave    *ProxyConf
 	UseSlave bool
-	*ProxyConf
+	ProxyConf
 }
 
 func initSentinel(conf *SentinelConf) (*redis.Pool, *redis.Pool) {
@@ -26,14 +26,14 @@ func initSentinel(conf *SentinelConf) (*redis.Pool, *redis.Pool) {
 }
 
 func getSentinel(opts *SentinelConf) *sentinel.Sentinel {
-	setDefaultOpts(opts.ProxyConf)
+	setDefaultOpts(&opts.ProxyConf)
 	if opts.Name == "" {
 		opts.Name = "mymaster"
 	}
 	return &sentinel.Sentinel{
 		Addrs:      opts.AddrList,
 		MasterName: opts.Name,
-		Pool:       pool(opts.ProxyConf),
+		Pool:       pool(&opts.ProxyConf),
 	}
 }
 

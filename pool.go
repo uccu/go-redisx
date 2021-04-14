@@ -155,13 +155,11 @@ func poolWithDial(opts *ProxyConf, dial func() (redis.Conn, error)) *redis.Pool 
 func dial(addr string, opts *ProxyConf) func() (redis.Conn, error) {
 	return func() (redis.Conn, error) {
 
-		redis.Dial(opts.Network, addr,
+		conn, err := redis.Dial(opts.Network, addr,
 			redis.DialConnectTimeout(opts.ConnectTimeout),
 			redis.DialReadTimeout(opts.ReadTimeout),
 			redis.DialWriteTimeout(opts.WriteTimeout),
 		)
-
-		conn, err := redis.Dial(opts.Network, addr)
 		if err != nil {
 			return nil, err
 		}

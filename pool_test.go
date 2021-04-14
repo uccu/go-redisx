@@ -9,7 +9,7 @@ import (
 )
 
 // ceshi
-func Test1(t *testing.T) {
+func TestSingle(t *testing.T) {
 
 	pools := InitRedis([]*Conf{
 		{
@@ -39,5 +39,32 @@ func Test1(t *testing.T) {
 
 	conn.Close()
 	fmt.Println(reply, reply2, err)
+
+}
+
+func TestCluster(t *testing.T) {
+
+	pools := InitRedis([]*Conf{
+		{
+			Mode: "cluster",
+			ClusterConf: &ClusterConf{
+				ProxyConf{
+					AddrList: []string{"127.0.0.1:6001", "127.0.0.1:6002", "127.0.0.1:6003"},
+					Db:       0,
+				},
+			},
+		},
+	})
+
+	conn := pools.GetPool()
+	conn.Send("SET", redis.Args{}.Add("a").AddFlat(1)...)
+	reply, err1 := redis.Int(conn.Do("GET", redis.Args{}.Add("a")...))
+
+	conn2 := pools.GetPool()
+	conn2.Send("SET", redis.Args{}.Add("b").AddFlat(1)...)
+	reply2, err2 := redis.Int(conn2.Do("GET", redis.Args{}.Add("b")...))
+
+	conn.Close()
+	fmt.Println(reply, reply2, err1, err2)
 
 }
