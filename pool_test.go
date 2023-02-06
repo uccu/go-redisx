@@ -34,11 +34,11 @@ func TestSingle(t *testing.T) {
 	conn2 := pools.GetPool("s1")
 	conn2.Send("SET", redis.Args{}.Add("testKey1").AddFlat(2)...)
 
-	reply, err := redis.String(conn.Do("GET", redis.Args{}.Add("testKey1")...))
-	reply2, err := redis.String(conn2.Do("GET", redis.Args{}.Add("testKey1")...))
+	reply, err1 := redis.String(conn.Do("GET", redis.Args{}.Add("testKey1")...))
+	reply2, err2 := redis.String(conn2.Do("GET", redis.Args{}.Add("testKey1")...))
 
 	conn.Close()
-	fmt.Println(reply, reply2, err)
+	fmt.Println(reply, reply2, err1, err2)
 
 }
 

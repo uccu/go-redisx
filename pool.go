@@ -43,9 +43,11 @@ type Pools struct {
 	pools map[string]Pool
 }
 
-var NoDefaultPool = errors.New("redisx:no default pool")
+var ErrNoDefaultPool = errors.New("redisx: no default pool")
 
-func (v *Pools) GetPool(l ...string) redis.Conn {
+type Conn = redis.Conn
+
+func (v *Pools) GetPool(l ...string) Conn {
 	name := "default"
 	if len(l) > 0 {
 		name = l[0]
@@ -54,15 +56,15 @@ func (v *Pools) GetPool(l ...string) redis.Conn {
 	if !ok {
 		pool, ok = v.pools["default"]
 		if !ok {
-			panic(NoDefaultPool)
+			panic(ErrNoDefaultPool)
 		}
 	}
 	return pool.Get()
 }
 
 func (v *Pools) closeIfDown() {
-	quit := make(chan os.Signal)
-	signal.Notify(quit, syscall.SIGKILL, syscall.SIGQUIT, syscall.SIGINT, syscall.SIGTERM)
+	quit := make(chan os.Signal, 8)
+	signal.Notify(quit, syscall.SIGQUIT, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	fmt.Println("redis close")
 	for _, v := range v.pools {
@@ -133,7 +135,7 @@ func setDefaultOpts(opts *ProxyConf) {
 	}
 }
 
-var NoAddr = errors.New("redisx:no addr")
+var ErrNoAddr = errors.New("redisx: no addr")
 
 func pool(opts *ProxyConf) func(addr string) *redis.Pool {
 	return func(addr string) *redis.Pool {
