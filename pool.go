@@ -2,10 +2,6 @@ package redisx
 
 import (
 	"errors"
-	"fmt"
-	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/gomodule/redigo/redis"
@@ -62,11 +58,7 @@ func (v *Pools) GetPool(l ...string) Conn {
 	return pool.Get()
 }
 
-func (v *Pools) closeIfDown() {
-	quit := make(chan os.Signal, 8)
-	signal.Notify(quit, syscall.SIGQUIT, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-	fmt.Println("redis close")
+func (v *Pools) Close() {
 	for _, v := range v.pools {
 		v.Close()
 	}
@@ -76,7 +68,6 @@ func InitRedis(confs []*Conf) Pools {
 	p := Pools{
 		pools: map[string]Pool{},
 	}
-	go p.closeIfDown()
 
 	for _, conf := range confs {
 
